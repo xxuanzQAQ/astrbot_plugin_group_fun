@@ -1,0 +1,43 @@
+{
+    "tianqi_ban_min": {
+        "description": "天弃之子最短禁言时间(秒)",
+        "type": "int",
+        "default": 60,
+        "hint": "天弃之子功能随机禁言的最短时间，单位：秒"
+    },
+    "tianqi_ban_max": {
+        "description": "天弃之子最长禁言时间(秒)",
+        "type": "int",
+        "default": 600,
+        "hint": "天弃之子功能随机禁言的最长时间，单位：秒"
+    },
+    "tianqi_miss_prob": {
+        "description": "天弃之子劈空概率",
+        "type": "float",
+        "default": 0.15,
+        "hint": "天弃之子闪电劈不中人的概率，0表示必中，1表示必空",
+        "slider": {
+            "min": 0,
+            "max": 0.5,
+            "step": 0.01
+        }
+    },
+    "tonggui_ban_min": {
+        "description": "同归于尽最短禁言时间(秒)",
+        "type": "int",
+        "default": 60,
+        "hint": "同归于尽功能禁言的最短时间，单位：秒"
+    },
+    "tonggui_ban_max": {
+        "description": "同归于尽最长禁言时间(秒)",
+        "type": "int",
+        "default": 600,
+        "hint": "同归于尽功能禁言的最长时间，单位：秒"
+    },
+    "sleep_duration": {
+        "description": "精致睡眠禁言时长(秒)",
+        "type": "int",
+        "default": 28800,
+        "hint": "精致睡眠套餐的禁言时长，默认28800秒（8小时）"
+    }
+}
