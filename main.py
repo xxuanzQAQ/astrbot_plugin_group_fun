@@ -172,18 +172,10 @@ class GroupFunPlugin(Star):
         # 劈空判定
         if random.random() < self.tianqi_miss_prob:
             miss_texts = [
-                f" 一道闪电从天而降……劈向了 {victim_name}！\n\n"
-                f"但是闪电歪了！{victim_name} 毫发无伤地站在原地。\n"
-                f"天弃之子？今天不存在的！",
-                f"雷公拿起了雷锤，瞄准了 {victim_name}……\n\n"
-                f"打了个盹，闪电劈到了旁边的树上。\n"
-                f"一棵无辜的树被劈焦了。",
-                f"闪电从云层中落下！目标：{victim_name}！\n\n"
-                f"一只鸽子挡住了闪电。\n"
-                f"{victim_name} 逃过一劫！",
-                f"天空一声巨响，天弃之子闪亮登场……\n\n"
-                f"结果只是打了个雷，下了场小雨。\n"
-                f"{victim_name} 今天运气不错！",
+                f"一道闪电劈向了 {victim_name}，但是歪了，毫发无伤。",
+                f"雷公打了个盹，闪电劈到了旁边的树上，{victim_name} 逃过一劫。",
+                f"一只鸽子挡住了闪电，{victim_name} 安然无恙。",
+                f"天空一声巨响，结果只是下了场小雨，{victim_name} 今天运气不错。",
             ]
             yield event.plain_result(random.choice(miss_texts))
             event.stop_event()
@@ -206,9 +198,9 @@ class GroupFunPlugin(Star):
         seconds = ban_time % 60
         time_str = f"{minutes}分{seconds}秒" if seconds else f"{minutes}分钟"
         chain = [
-            Plain(text=f"一道闪电从天而降，劈中了 {victim_name}！\n\n"),
+            Plain(text="一道闪电劈中了 "),
             At(qq=victim_id),
-            Plain(text=f"\n\n恭喜 {victim_name} 成为今天的天弃之子！\n禁言 {time_str}"),
+            Plain(text=f" {victim_name}，成为今天的天弃之子，禁言 {time_str}"),
         ]
         yield event.chain_result(chain)
         event.stop_event()
@@ -224,12 +216,12 @@ class GroupFunPlugin(Star):
         gid = event.get_group_id()
         gs = self._group_state(gid)
         if not gs["tonggui_enabled"]:
-            yield event.plain_result("⚠️ 同归于尽功能已关闭")
+            yield event.plain_result("同归于尽功能已关闭")
             return
 
         bot_role = await _get_bot_role(event)
         if not _is_group_admin_or_owner(bot_role):
-            yield event.plain_result("❌ Bot需要管理员权限才能执行此操作")
+            yield event.plain_result("Bot需要管理员权限才能执行此操作")
             return
 
         sender_id = event.get_sender_id()
@@ -237,49 +229,47 @@ class GroupFunPlugin(Star):
 
         # 不能对群主使用（如果bot不是群主）
         if bot_role != "owner" and sender_role == "owner":
-            yield event.plain_result("❌ 无法对群主执行禁言")
+            yield event.plain_result("无法对群主执行禁言")
             return
 
         # 获取@的目标
         target_ids = _get_ats(event)
         if not target_ids:
-            yield event.plain_result("❌ 请@一位群友来同归于尽！\n用法: 同归于尽 @群友")
+            yield event.plain_result("请@一位群友，用法：同归于尽 @群友")
             return
 
         target_id = target_ids[0]
 
         # 不能同归自己
         if target_id == sender_id:
-            yield event.plain_result("❌ 不能和自己同归于尽哦~")
+            yield event.plain_result("不能和自己同归于尽")
             return
 
         # 不能同归bot
         if target_id == event.get_self_id():
-            yield event.plain_result("❌ 不能和我同归于尽！")
+            yield event.plain_result("不能和我同归于尽")
             return
 
         target_role = await _get_user_role(event, target_id)
 
         # 如果bot是管理员，不能禁言群主和其他管理员
         if bot_role == "admin" and target_role in ("owner", "admin"):
-            yield event.plain_result("❌ 无法对管理员/群主执行禁言")
+            yield event.plain_result("无法对管理员/群主执行禁言")
             return
 
         # 如果bot是群主，不能禁言群主（自己）
         if bot_role == "owner" and target_role == "owner":
-            yield event.plain_result("❌ 无法对群主执行禁言")
+            yield event.plain_result("无法对群主执行禁言")
             return
 
         # 检查目标是否允许被同归
         allow_map = gs.get("tonggui_allow", {})
         if allow_map.get(target_id) is False:
             target_name = await _get_nickname(event, target_id)
-            yield event.plain_result(f"❌ {target_name} 已禁止被同归于尽")
+            yield event.plain_result(f"{target_name} 已禁止被同归于尽")
             return
 
         ban_time = random.randint(self.tonggui_ban_min, self.tonggui_ban_max)
-        sender_name = await _get_nickname(event, sender_id)
-        target_name = await _get_nickname(event, target_id)
 
         # 反弹倍数: 1~9 的加权随机，数学期望约 3.024691358
         # P(n) = 2*(10-n) / 90  →  1倍最容易，9倍最难
@@ -319,14 +309,12 @@ class GroupFunPlugin(Star):
         s_str = _fmt(sender_ban)
 
         chain = [
-            Plain(text=f"💥 同归于尽！\n\n"),
+            Plain(text="同归于尽！\n"),
             At(qq=target_id),
-            Plain(text=f" {target_name} 受到了 {t_str} 的禁言\n\n"),
-            Plain(text=f"🔄 而 "),
+            Plain(text=f" 禁言 {t_str}\n"),
             At(qq=sender_id),
-            Plain(text=f" {sender_name} 受到了 {multiplier} 倍反弹！\n"
-                       f"⏱️ 禁言 {s_str}"),
-            Plain(text="" if can_ban_sender else "\n（但因权限不足无法禁言发起者）"),
+            Plain(text=f" 受到 {multiplier} 倍反弹，禁言 {s_str}"),
+            Plain(text="" if can_ban_sender else "\n（权限不足，发起者未被禁言）"),
         ]
 
         yield event.chain_result(chain)
@@ -343,7 +331,7 @@ class GroupFunPlugin(Star):
         sender_id = event.get_sender_id()
         allow_map[sender_id] = True
         self._save_state()
-        yield event.plain_result("✅ 你已允许被同归于尽")
+        yield event.plain_result("你已允许被同归于尽")
         event.stop_event()
 
     @filter.command("禁止被同归")
@@ -357,7 +345,7 @@ class GroupFunPlugin(Star):
         sender_id = event.get_sender_id()
         allow_map[sender_id] = False
         self._save_state()
-        yield event.plain_result("✅ 你已禁止被同归于尽")
+        yield event.plain_result("你已禁止被同归于尽")
         event.stop_event()
 
     # ───────── 3. 精致睡眠 ─────────
@@ -371,22 +359,22 @@ class GroupFunPlugin(Star):
         gid = event.get_group_id()
         gs = self._group_state(gid)
         if not gs["sleep_enabled"]:
-            yield event.plain_result("⚠️ 精致睡眠功能已关闭")
+            yield event.plain_result("精致睡眠功能已关闭")
             return
 
         bot_role = await _get_bot_role(event)
         if not _is_group_admin_or_owner(bot_role):
-            yield event.plain_result("❌ Bot需要管理员权限才能执行此操作")
+            yield event.plain_result("Bot需要管理员权限才能执行此操作")
             return
 
         sender_id = event.get_sender_id()
         sender_role = await _get_user_role(event, sender_id)
 
         if bot_role == "admin" and sender_role in ("owner", "admin"):
-            yield event.plain_result("❌ 无法对管理员/群主执行禁言，你不需要睡眠~")
+            yield event.plain_result("无法对管理员/群主执行禁言")
             return
         if bot_role == "owner" and sender_role == "owner":
-            yield event.plain_result("❌ 群主不需要精致睡眠~")
+            yield event.plain_result("群主无法使用此功能")
             return
 
         try:
@@ -397,14 +385,13 @@ class GroupFunPlugin(Star):
             )
         except Exception as e:
             logger.error(f"精致睡眠禁言失败: {e}")
-            yield event.plain_result(f"❌ 禁言失败: {e}")
+            yield event.plain_result(f"禁言失败: {e}")
             return
 
         hours = self.sleep_duration // 3600
         chain = [
             At(qq=sender_id),
-            Plain(text=f"\n\n🌙 晚安~ 已为你开启 {hours} 小时精致睡眠套餐\n"
-                       f"💤 祝你好梦！醒来又是元气满满的一天~"),
+            Plain(text=f" 晚安，已开启 {hours} 小时精致睡眠套餐。"),
         ]
         yield event.chain_result(chain)
         event.stop_event()
@@ -419,13 +406,13 @@ class GroupFunPlugin(Star):
         sender_id = event.get_sender_id()
         sender_role = await _get_user_role(event, sender_id)
         if not _is_group_admin_or_owner(sender_role):
-            yield event.plain_result("❌ 需要群管理员/群主权限")
+            yield event.plain_result("需要群管理员/群主权限")
             return
         gid = event.get_group_id()
         gs = self._group_state(gid)
         gs["tianqi_enabled"] = False
         self._save_state()
-        yield event.plain_result("✅ 已关闭天弃之子功能")
+        yield event.plain_result("已关闭天弃之子")
         event.stop_event()
 
     @filter.command("开启天弃之子")
@@ -436,13 +423,13 @@ class GroupFunPlugin(Star):
         sender_id = event.get_sender_id()
         sender_role = await _get_user_role(event, sender_id)
         if not _is_group_admin_or_owner(sender_role):
-            yield event.plain_result("❌ 需要群管理员/群主权限")
+            yield event.plain_result("需要群管理员/群主权限")
             return
         gid = event.get_group_id()
         gs = self._group_state(gid)
         gs["tianqi_enabled"] = True
         self._save_state()
-        yield event.plain_result("✅ 已开启天弃之子功能")
+        yield event.plain_result("已开启天弃之子")
         event.stop_event()
 
     @filter.command("关闭同归于尽")
@@ -453,13 +440,13 @@ class GroupFunPlugin(Star):
         sender_id = event.get_sender_id()
         sender_role = await _get_user_role(event, sender_id)
         if not _is_group_admin_or_owner(sender_role):
-            yield event.plain_result("❌ 需要群管理员/群主权限")
+            yield event.plain_result("需要群管理员/群主权限")
             return
         gid = event.get_group_id()
         gs = self._group_state(gid)
         gs["tonggui_enabled"] = False
         self._save_state()
-        yield event.plain_result("✅ 已关闭同归于尽功能")
+        yield event.plain_result("已关闭同归于尽")
         event.stop_event()
 
     @filter.command("开启同归于尽")
@@ -470,13 +457,13 @@ class GroupFunPlugin(Star):
         sender_id = event.get_sender_id()
         sender_role = await _get_user_role(event, sender_id)
         if not _is_group_admin_or_owner(sender_role):
-            yield event.plain_result("❌ 需要群管理员/群主权限")
+            yield event.plain_result("需要群管理员/群主权限")
             return
         gid = event.get_group_id()
         gs = self._group_state(gid)
         gs["tonggui_enabled"] = True
         self._save_state()
-        yield event.plain_result("✅ 已开启同归于尽功能")
+        yield event.plain_result("已开启同归于尽")
         event.stop_event()
 
     @filter.command("关闭睡眠")
@@ -487,13 +474,13 @@ class GroupFunPlugin(Star):
         sender_id = event.get_sender_id()
         sender_role = await _get_user_role(event, sender_id)
         if not _is_group_admin_or_owner(sender_role):
-            yield event.plain_result("❌ 需要群管理员/群主权限")
+            yield event.plain_result("需要群管理员/群主权限")
             return
         gid = event.get_group_id()
         gs = self._group_state(gid)
         gs["sleep_enabled"] = False
         self._save_state()
-        yield event.plain_result("✅ 已关闭精致睡眠功能")
+        yield event.plain_result("已关闭精致睡眠")
         event.stop_event()
 
     @filter.command("开启睡眠")
@@ -504,12 +491,12 @@ class GroupFunPlugin(Star):
         sender_id = event.get_sender_id()
         sender_role = await _get_user_role(event, sender_id)
         if not _is_group_admin_or_owner(sender_role):
-            yield event.plain_result("❌ 需要群管理员/群主权限")
+            yield event.plain_result("需要群管理员/群主权限")
             return
         gid = event.get_group_id()
         gs = self._group_state(gid)
         gs["sleep_enabled"] = True
         self._save_state()
-        yield event.plain_result("✅ 已开启精致睡眠功能")
+        yield event.plain_result("已开启精致睡眠")
         event.stop_event()
 
