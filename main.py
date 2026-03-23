@@ -1,8 +1,8 @@
 import json
-import os
 import random
+from pathlib import Path
 
-from astrbot import logger
+from astrbot.api import logger
 from astrbot.api.event import filter
 from astrbot.api.star import Context, Star, StarTools
 from astrbot.core.config.astrbot_config import AstrBotConfig
@@ -31,13 +31,13 @@ async def _get_nickname(event: AiocqhttpMessageEvent, user_id: int | str) -> str
             info = await event.bot.get_group_member_info(
                 group_id=int(group_id), user_id=user_id
             ) or {}
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"获取群成员信息失败 user_id={user_id}: {e}")
     if not info:
         try:
             info = await event.bot.get_stranger_info(user_id=user_id) or {}
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"获取陌生人信息失败 user_id={user_id}: {e}")
     return info.get("card") or info.get("nickname") or info.get("nick") or str(user_id)
 
 
@@ -49,7 +49,8 @@ async def _get_bot_role(event: AiocqhttpMessageEvent) -> str:
             user_id=int(event.get_self_id()),
         )
         return info.get("role", "member")
-    except Exception:
+    except Exception as e:
+        logger.debug(f"获取Bot群身份失败: {e}")
         return "member"
 
 
@@ -61,7 +62,8 @@ async def _get_user_role(event: AiocqhttpMessageEvent, user_id: str) -> str:
             user_id=int(user_id),
         )
         return info.get("role", "member")
-    except Exception:
+    except Exception as e:
+        logger.debug(f"获取用户群身份失败 user_id={user_id}: {e}")
         return "member"
 
 
@@ -88,24 +90,24 @@ class GroupFunPlugin(Star):
         self.sleep_duration = config.get("sleep_duration", 28800)  # 8h
 
         # 持久化数据文件
-        self._state_path = os.path.join(self.data_dir, "group_fun_state.json")
+        self._state_path: Path = self.data_dir / "group_fun_state.json"
         self._state = self._load_state()
 
     # ───────── 持久化工具 ─────────
 
     def _load_state(self) -> dict:
-        if os.path.exists(self._state_path):
+        if self._state_path.exists():
             try:
-                with open(self._state_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                pass
+                return json.loads(self._state_path.read_text(encoding="utf-8"))
+            except Exception as e:
+                logger.debug(f"读取状态文件失败: {e}")
         return {}
 
     def _save_state(self):
-        os.makedirs(os.path.dirname(self._state_path), exist_ok=True)
-        with open(self._state_path, "w", encoding="utf-8") as f:
-            json.dump(self._state, f, ensure_ascii=False, indent=2)
+        self._state_path.parent.mkdir(parents=True, exist_ok=True)
+        self._state_path.write_text(
+            json.dumps(self._state, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
 
     def _group_state(self, group_id: str) -> dict:
         if group_id not in self._state:
@@ -116,6 +118,40 @@ class GroupFunPlugin(Star):
                 "tonggui_allow": {},  # user_id -> bool
             }
         return self._state[group_id]
+
+    # ───────── 公共辅助 ─────────
+
+    async def _require_bot_admin(
+        self, event: AiocqhttpMessageEvent
+    ) -> tuple[str, str | None]:
+        """检查Bot是否具备管理员权限。
+        返回 (bot_role, error_msg)，error_msg 为 None 表示检查通过。
+        """
+        bot_role = await _get_bot_role(event)
+        if not _is_group_admin_or_owner(bot_role):
+            return bot_role, "Bot需要管理员权限才能执行此操作"
+        return bot_role, None
+
+    async def _toggle_feature(
+        self,
+        event: AiocqhttpMessageEvent,
+        feature_key: str,
+        value: bool,
+        label: str,
+    ):
+        """开关类命令的公共实现，需要发送者具备群管理员/群主权限。"""
+        if event.is_private_chat():
+            return
+        sender_role = await _get_user_role(event, event.get_sender_id())
+        if not _is_group_admin_or_owner(sender_role):
+            yield event.plain_result("需要群管理员/群主权限")
+            return
+        gs = self._group_state(event.get_group_id())
+        gs[feature_key] = value
+        self._save_state()
+        action = "开启" if value else "关闭"
+        yield event.plain_result(f"已{action}{label}")
+        event.stop_event()
 
     # ───────── 1. 天弃之子 ─────────
 
@@ -131,9 +167,9 @@ class GroupFunPlugin(Star):
             yield event.plain_result("天弃之子功能已关闭")
             return
 
-        bot_role = await _get_bot_role(event)
-        if not _is_group_admin_or_owner(bot_role):
-            yield event.plain_result("Bot需要管理员权限才能执行此操作")
+        bot_role, err = await self._require_bot_admin(event)
+        if err:
+            yield event.plain_result(err)
             return
 
         # 获取群成员列表
@@ -249,9 +285,9 @@ class GroupFunPlugin(Star):
             yield event.plain_result("同归于尽功能已关闭")
             return
 
-        bot_role = await _get_bot_role(event)
-        if not _is_group_admin_or_owner(bot_role):
-            yield event.plain_result("Bot需要管理员权限才能执行此操作")
+        bot_role, err = await self._require_bot_admin(event)
+        if err:
+            yield event.plain_result(err)
             return
 
         sender_id = event.get_sender_id()
@@ -392,9 +428,9 @@ class GroupFunPlugin(Star):
             yield event.plain_result("精致睡眠功能已关闭")
             return
 
-        bot_role = await _get_bot_role(event)
-        if not _is_group_admin_or_owner(bot_role):
-            yield event.plain_result("Bot需要管理员权限才能执行此操作")
+        bot_role, err = await self._require_bot_admin(event)
+        if err:
+            yield event.plain_result(err)
             return
 
         sender_id = event.get_sender_id()
@@ -431,102 +467,36 @@ class GroupFunPlugin(Star):
     @filter.command("关闭天弃之子")
     async def disable_tianqi(self, event: AiocqhttpMessageEvent):
         """关闭天弃之子功能（需要群管理员/群主权限）"""
-        if event.is_private_chat():
-            return
-        sender_id = event.get_sender_id()
-        sender_role = await _get_user_role(event, sender_id)
-        if not _is_group_admin_or_owner(sender_role):
-            yield event.plain_result("需要群管理员/群主权限")
-            return
-        gid = event.get_group_id()
-        gs = self._group_state(gid)
-        gs["tianqi_enabled"] = False
-        self._save_state()
-        yield event.plain_result("已关闭天弃之子")
-        event.stop_event()
+        async for r in self._toggle_feature(event, "tianqi_enabled", False, "天弃之子"):
+            yield r
 
     @filter.command("开启天弃之子")
     async def enable_tianqi(self, event: AiocqhttpMessageEvent):
         """开启天弃之子功能"""
-        if event.is_private_chat():
-            return
-        sender_id = event.get_sender_id()
-        sender_role = await _get_user_role(event, sender_id)
-        if not _is_group_admin_or_owner(sender_role):
-            yield event.plain_result("需要群管理员/群主权限")
-            return
-        gid = event.get_group_id()
-        gs = self._group_state(gid)
-        gs["tianqi_enabled"] = True
-        self._save_state()
-        yield event.plain_result("已开启天弃之子")
-        event.stop_event()
+        async for r in self._toggle_feature(event, "tianqi_enabled", True, "天弃之子"):
+            yield r
 
     @filter.command("关闭同归于尽")
     async def disable_tonggui(self, event: AiocqhttpMessageEvent):
         """关闭同归于尽功能"""
-        if event.is_private_chat():
-            return
-        sender_id = event.get_sender_id()
-        sender_role = await _get_user_role(event, sender_id)
-        if not _is_group_admin_or_owner(sender_role):
-            yield event.plain_result("需要群管理员/群主权限")
-            return
-        gid = event.get_group_id()
-        gs = self._group_state(gid)
-        gs["tonggui_enabled"] = False
-        self._save_state()
-        yield event.plain_result("已关闭同归于尽")
-        event.stop_event()
+        async for r in self._toggle_feature(event, "tonggui_enabled", False, "同归于尽"):
+            yield r
 
     @filter.command("开启同归于尽")
     async def enable_tonggui(self, event: AiocqhttpMessageEvent):
         """开启同归于尽功能"""
-        if event.is_private_chat():
-            return
-        sender_id = event.get_sender_id()
-        sender_role = await _get_user_role(event, sender_id)
-        if not _is_group_admin_or_owner(sender_role):
-            yield event.plain_result("需要群管理员/群主权限")
-            return
-        gid = event.get_group_id()
-        gs = self._group_state(gid)
-        gs["tonggui_enabled"] = True
-        self._save_state()
-        yield event.plain_result("已开启同归于尽")
-        event.stop_event()
+        async for r in self._toggle_feature(event, "tonggui_enabled", True, "同归于尽"):
+            yield r
 
     @filter.command("关闭睡眠")
     async def disable_sleep(self, event: AiocqhttpMessageEvent):
         """关闭精致睡眠功能"""
-        if event.is_private_chat():
-            return
-        sender_id = event.get_sender_id()
-        sender_role = await _get_user_role(event, sender_id)
-        if not _is_group_admin_or_owner(sender_role):
-            yield event.plain_result("需要群管理员/群主权限")
-            return
-        gid = event.get_group_id()
-        gs = self._group_state(gid)
-        gs["sleep_enabled"] = False
-        self._save_state()
-        yield event.plain_result("已关闭精致睡眠")
-        event.stop_event()
+        async for r in self._toggle_feature(event, "sleep_enabled", False, "精致睡眠"):
+            yield r
 
     @filter.command("开启睡眠")
     async def enable_sleep(self, event: AiocqhttpMessageEvent):
         """开启精致睡眠功能"""
-        if event.is_private_chat():
-            return
-        sender_id = event.get_sender_id()
-        sender_role = await _get_user_role(event, sender_id)
-        if not _is_group_admin_or_owner(sender_role):
-            yield event.plain_result("需要群管理员/群主权限")
-            return
-        gid = event.get_group_id()
-        gs = self._group_state(gid)
-        gs["sleep_enabled"] = True
-        self._save_state()
-        yield event.plain_result("已开启精致睡眠")
-        event.stop_event()
+        async for r in self._toggle_feature(event, "sleep_enabled", True, "精致睡眠"):
+            yield r
 
