@@ -82,6 +82,7 @@ class GroupFunPlugin(Star):
         self.tianqi_ban_min = config.get("tianqi_ban_min", 60)
         self.tianqi_ban_max = config.get("tianqi_ban_max", 600)
         self.tianqi_miss_prob = config.get("tianqi_miss_prob", 0.15)
+        self.tianqi_self_ban_prob = config.get("tianqi_self_ban_prob", 0.2)  # 连带禁言发起者的概率
         self.tonggui_ban_min = config.get("tonggui_ban_min", 60)
         self.tonggui_ban_max = config.get("tonggui_ban_max", 600)
         self.sleep_duration = config.get("sleep_duration", 28800)  # 8h
@@ -197,11 +198,40 @@ class GroupFunPlugin(Star):
         minutes = ban_time // 60
         seconds = ban_time % 60
         time_str = f"{minutes}分{seconds}秒" if seconds else f"{minutes}分钟"
+
+        # 连带自爆判定
+        sender_id = event.get_sender_id()
+        self_ban_triggered = False
+        self_ban_time = 0
+        if victim_id != sender_id and random.random() < self.tianqi_self_ban_prob:
+            sender_role = await _get_user_role(event, sender_id)
+            can_ban_sender = not (
+                (bot_role == "admin" and sender_role in ("owner", "admin"))
+                or (bot_role == "owner" and sender_role == "owner")
+            )
+            if can_ban_sender:
+                self_ban_time = random.randint(self.tianqi_ban_min, self.tianqi_ban_max)
+                try:
+                    await event.bot.set_group_ban(
+                        group_id=int(gid),
+                        user_id=int(sender_id),
+                        duration=self_ban_time,
+                    )
+                    self_ban_triggered = True
+                except Exception as e:
+                    logger.error(f"天弃之子连带禁言失败: {e}")
+
         chain = [
             Plain(text="一道闪电劈中了 "),
             At(qq=victim_id),
             Plain(text=f" {victim_name}，成为今天的天弃之子，禁言 {time_str}"),
         ]
+        if self_ban_triggered:
+            sb_min = self_ban_time // 60
+            sb_sec = self_ban_time % 60
+            sb_str = f"{sb_min}分{sb_sec}秒" if sb_sec else f"{sb_min}分钟"
+            sender_name = await _get_nickname(event, sender_id)
+            chain.append(Plain(text=f"\n闪电余波波及了召唤者 {sender_name}，禁言 {sb_str}"))
         yield event.chain_result(chain)
         event.stop_event()
 
